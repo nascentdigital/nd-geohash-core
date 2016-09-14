@@ -5,7 +5,7 @@
  */
 const
     _ = require('lodash'),
-	ndGeohash = require('./build/Release/_nd-geohash-core');
+	ndGeohash = require('../build/Release/_nd-geohash-core');
 
 function hash(lat, lng, name) {
 
