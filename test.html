@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Map</title>
+    <meta name="viewport" content="initial-scale=1.0">
+    <meta charset="utf-8">
+    <style>
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+        #map {
+            width: 800px;
+            height: 600px;
+        }
+    </style>
+</head>
+<body>
+<div id="map"></div>
+<button onclick="capture()">Capture</button>
+<script>
+    var map;
+    function initMap() {
+        map = new google.maps.Map(document.getElementById('map'), {
+            center: {lat: 43.764206, lng: -79.766591},
+            zoom: 15
+        });
+    }
+    function capture() {
+        var bounds = map.getBounds();
+        console.log('map bounds: %s', JSON.stringify(bounds));
+    }
+</script>
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyAAsYBt1bMJIB_PwSrMdAfsogzgKHGBNfI&callback=initMap"
+        async defer></script>
+</body>
+</html>
