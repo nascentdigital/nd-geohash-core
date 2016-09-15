@@ -11,6 +11,7 @@
 #include "s2cell.h"
 #include "s2cellid.h"
 #include "s2cellunion.h"
+#include "Geohash.h"
 
 using namespace v8;
 
@@ -215,14 +216,60 @@ void GetGeohashRanges(const Nan::FunctionCallbackInfo<Value>& info) {
     info.GetReturnValue().Set(Nan::New(true));
 }
 
-void Init(Local<Object> exports) {
 
-    exports->Set(Nan::New("generateGeohash").ToLocalChecked(),
-        Nan::New<FunctionTemplate>(GenerateGeohash)->GetFunction());
-    exports->Set(Nan::New("generateHashKey").ToLocalChecked(),
-        Nan::New<FunctionTemplate>(GenerateHashKey)->GetFunction());
-    exports->Set(Nan::New("getGeohashRanges").ToLocalChecked(),
-        Nan::New<FunctionTemplate>(GetGeohashRanges)->GetFunction());
+void Constructor(const Nan::FunctionCallbackInfo<Value>& info) {
+
+    // fail if too many arguments are specified
+    const int argumentCount = info.Length();
+    if (argumentCount > 1) {
+
+        std::cout << "[Addon] invalid number of arguments" << argumentCount << std::endl;
+
+        Nan::ThrowTypeError("Invalid number of arguments.");
+        return;
+    }
+
+    // support optional parameters (i.e. no options specified)
+    Nan::MaybeLocal<Object> options;
+
+    // handle case where option is provided
+    if (argumentCount == 1) {
+
+        // fail if argument isn't an object
+        if (!info[0]->IsObject()) {
+
+            std::cout << "[Addon] invalid constructor argument type" << std::endl;
+
+            Nan::ThrowTypeError("Options object expected as constructor argument.");
+            return;
+        }
+
+        // or assign object as options
+        else {
+
+            std::cout << "[Addon] Geohash(options)" << std::endl;
+
+            options = Nan::MaybeLocal<Object>(info[0]->ToObject());
+        }
+    }
+    else {
+            std::cout << "[Addon] Geohash()" << std::endl;
+    }
+
+    // create new wrapped object instance and return it
+    info.GetReturnValue().Set(nascent::Geohash::NewInstance(options));
+}
+
+void Init(Local<Object> exports, Local<Object> module) {
+
+    // define scope
+    Nan::HandleScope scope;
+
+    // initialize geohash class
+    nascent::Geohash::Init();
+
+    // export constructor
+    Nan::SetMethod(module, "exports", Constructor);
 }
 
 NODE_MODULE(_geo, Init)

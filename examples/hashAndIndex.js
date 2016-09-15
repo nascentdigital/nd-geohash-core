@@ -5,7 +5,10 @@
  */
 const
     _ = require('lodash'),
-	ndGeohash = require('../build/Release/_nd-geohash-core');
+	Geohash = require('bindings')('_nd-geohash-core.node');
+
+
+const geohash = Geohash();
 
 function hash(lat, lng, name) {
 
@@ -21,7 +24,7 @@ function hash(lat, lng, name) {
 function getRanges(bounds, name) {
     console.log('geoquery: %s', JSON.stringify(bounds, null, 4));
 
-	ndGeohash.getGeohashRanges(bounds);
+	var ranges = ndGeohash.getGeohashRanges(bounds);
 
     // vector<S2CellId> parentCells;
     // vector<S2CellId> childCells;
@@ -62,7 +65,6 @@ hash(43.744368,-79.745718, 'Temple');
 hash(43.720801,-79.642206, 'Malton');
 hash(43.647932,-79.389177, 'Nascent');
 hash(43.643336,-79.380895, 'TELUS');
-
 
 getRanges({
   min: { lat: 43.75565128202533, lng: -79.79070942346192 },

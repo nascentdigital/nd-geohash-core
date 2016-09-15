@@ -3,7 +3,8 @@
     {
       "target_name": "_nd-geohash-core",
       "sources": [
-        "./src/geo.cc",
+        "./src/addon.cc",
+        "./src/Geohash.cc",
         "./src/geometry/s1angle.cc",
         "./src/geometry/s1interval.cc",
         "./src/geometry/s2.cc",
@@ -34,6 +35,7 @@
       ],
       "include_dirs": [
         "<!(node -e \"require('nan')\")",
+        "./src/",
         "./src/geometry/",
         "./src/geometry/base/",
         "./src/geometry/s2/",

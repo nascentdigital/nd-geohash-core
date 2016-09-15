@@ -1,4 +1,4 @@
 /**
  * Exports.
  */
-module.exports = require('./build/Release/_nd-geohash-core');
+module.exports = require('bindings')('_nd-geohash-core.node');
