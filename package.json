@@ -1,6 +1,6 @@
 {
   "name": "nd-geohash-core",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "A Node addon providing geospatial indexing support to databases.",
   "main": "index.js",
   "private": false,
