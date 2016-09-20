@@ -1,4 +1,5 @@
 #include "Geohash.h"
+#include "GeohashRange.h"
 #include <iostream>
 #include <string.h>
 #include <vector>
@@ -146,23 +147,16 @@ void Geohash::GetHashKey(const Nan::FunctionCallbackInfo<Value>& info) {
         return;
     }
 
-    // parse numbers
+    // resolve hash string
     Nan::Utf8String geohash(info[0]->ToString());
+    const uint64 hash = std::stoull(std::string(*geohash));
+
+    // invoke instance method
     Geohash* instance = ObjectWrap::Unwrap<Geohash>(info.This());
-    int hashKeyLength = instance->hashKeyLength_;
-
-    // compensate for negative values by increasing hash key length
-    uint64 numerator = std::stoull(std::string(*geohash));
-    if (numerator < 0) {
-        ++hashKeyLength;
-    }
-
-    // calculate hash key
-    uint64 denominator = pow(10, geohash.length() - hashKeyLength);
-    std::string hashKey(std::to_string(numerator / denominator));
+    const uint64 hashKey = instance->GetHashKey(hash);
 
     // return hash key
-    Local<String> result = Nan::New(hashKey).ToLocalChecked();
+    Local<String> result = Nan::New(std::to_string(hashKey)).ToLocalChecked();
     info.GetReturnValue().Set(result);
 }
 
@@ -198,7 +192,6 @@ void Geohash::GetHashRanges(const Nan::FunctionCallbackInfo<Value>& info) {
     const S2CellId parentEnd = S2CellId::End(0);
     for(S2CellId c = S2CellId::Begin(0); c != parentEnd; c = c.next()) {
         if (boundsRect.Intersects(S2Cell(c))) {
-            std::cout << "[GetHashRanges] parent: " << c.id() << std::endl;
             parentCells.push(c);
         }
     }
@@ -236,7 +229,6 @@ void Geohash::GetHashRanges(const Nan::FunctionCallbackInfo<Value>& info) {
                     // add the cell to range if it's a leaf
                     S2CellId &childCell = *i;
                     if (childCell.is_leaf()) {
-                        std::cout << "[GetHashRanges] adding child leaf node: " << childCell.id() << std::endl;
                         rangeCells.push_back(childCell);
                     }
 
@@ -251,14 +243,12 @@ void Geohash::GetHashRanges(const Nan::FunctionCallbackInfo<Value>& info) {
             case 3:
                 for (std::vector<S2CellId>::iterator i = childCells.begin(); i != childCells.end(); ++i) {
                     S2CellId &childCell = *i;
-                    std::cout << "[GetHashRanges] adding child node: " << childCell.id() << std::endl;
                     rangeCells.push_back(childCell);
                 }
                 break;
 
             // add parent to range if all children match
             case 4:
-                std::cout << "[GetHashRanges] adding parent node: " << parentCell.id() << std::endl;
                 rangeCells.push_back(parentCell);
                 break;
 
@@ -269,15 +259,119 @@ void Geohash::GetHashRanges(const Nan::FunctionCallbackInfo<Value>& info) {
         }
     }
 
+    // stop processing if there are no cells to union
+    const int resultsLength = rangeCells.size();
+    if (resultsLength == 0) {
+        info.GetReturnValue().Set(Nan::New<Array>(0));
+        return;
+    }
+
     // create union of all child cells
     S2CellUnion cellUnion;
     cellUnion.Init(rangeCells);
 
-    // iterate over all children in union
+    // transform cells into a collection of merged ranges
+    std::vector<GeohashRange> outerRanges;
     for (int i = 0; i < cellUnion.num_cells(); ++i) {
+
+        // get next child cell and transform to range
         const S2CellId &childCell = cellUnion.cell_id(i);
-        std::cout << "[GetHashRanges] creating range for child: " << childCell.id() << std::endl;
+        GeohashRange range(childCell);
+
+        // try to merge range
+        bool merged = false;
+        for (std::vector<GeohashRange>::iterator i = outerRanges.begin(); i != outerRanges.end(); ++i) {
+            GeohashRange &existingRange = *i;
+            if (existingRange.tryMerge(range)) {
+                merged = true;
+                break;
+            }
+        }
+
+        // add range to collection if it wasn't merged
+        if (!merged) {
+            outerRanges.push_back(range);
+        }
     }
 
-    info.GetReturnValue().Set(Nan::New(true));
+    // massage outer ranges into more granular ranges
+    Geohash* instance = ObjectWrap::Unwrap<Geohash>(info.This());
+    std::vector<GeohashRange> ranges;
+    for (std::vector<GeohashRange>::iterator i = outerRanges.begin(); i != outerRanges.end(); ++i) {
+
+        // capture next outer range and min/max hash keys
+        GeohashRange &outerRange = *i;
+
+        // simply add item if hashed range is narrow
+        uint64 rangeMin = outerRange.min();
+        uint64 minHashKey = instance->GetHashKey(rangeMin);
+        uint64 rangeMax = outerRange.min();
+        uint64 maxHashKey = instance->GetHashKey(rangeMax);
+        if (minHashKey == maxHashKey) {
+            ranges.push_back(outerRange);
+        }
+
+        // or create ranges for hashed values
+        else {
+
+            // calculate range denominator
+            uint64 denominator = pow(10, std::to_string(rangeMin).length()
+                - std::to_string(minHashKey).length());
+
+            for (uint64 hashKey = minHashKey; hashKey <= maxHashKey; ++hashKey) {
+                if (hashKey > 0) {
+                    ranges.push_back(GeohashRange(
+                        hashKey == minHashKey ? rangeMin : hashKey * denominator,
+                        hashKey == maxHashKey ? rangeMax : (hashKey + 1) * denominator - 1));
+                }
+                else {
+                    ranges.push_back(GeohashRange(
+                        hashKey == minHashKey ? rangeMin : (hashKey - 1) * denominator + 1,
+                        hashKey == maxHashKey ? rangeMax : hashKey * denominator));
+                }
+            }
+        }
+    }
+
+    // return ranges as an array of objects
+    Local<Array> rangesArray = Nan::New<Array>(ranges.size());
+    int rangeIndex = 0;
+    for (std::vector<GeohashRange>::iterator i = ranges.begin(); i != ranges.end(); ++i) {
+
+        // get range
+        GeohashRange &range = *i;
+
+        // create object for range
+        Local<Object> rangeObject = Nan::New<Object>();
+        rangeObject->Set(Nan::New("hashKey").ToLocalChecked(),
+            Nan::New(std::to_string(instance->GetHashKey(range.min()))).ToLocalChecked());
+        rangeObject->Set(Nan::New("min").ToLocalChecked(),
+            Nan::New(std::to_string(range.min())).ToLocalChecked());
+        rangeObject->Set(Nan::New("max").ToLocalChecked(),
+            Nan::New(std::to_string(range.max())).ToLocalChecked());
+
+        // add object to array
+        rangesArray->Set(rangeIndex++, rangeObject);
+    }
+
+    // return results
+    info.GetReturnValue().Set(rangesArray);
+}
+
+uint64 Geohash::GetHashKey(const uint64 hash) {
+
+    // resolve key length (need to mutate it later)
+    int hashKeyLength = hashKeyLength_;
+
+    // compensate for negative values by increasing hash key length
+    if (hash < 0) {
+        ++hashKeyLength;
+    }
+
+    // calculate hash key
+    uint64 denominator = pow(10, std::to_string(hash).length() - hashKeyLength);
+    uint64 hashKey = hash / denominator;
+
+    // return hash key
+    return hashKey;
 }

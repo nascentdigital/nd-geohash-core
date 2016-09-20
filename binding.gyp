@@ -5,6 +5,7 @@
       "sources": [
         "./src/addon.cc",
         "./src/Geohash.cc",
+        "./src/GeohashRange.cc",
         "./src/geometry/s1angle.cc",
         "./src/geometry/s1interval.cc",
         "./src/geometry/s2.cc",

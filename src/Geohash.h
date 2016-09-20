@@ -2,6 +2,8 @@
 #define ND_GEOHASH_GEOHASH_H
 
 #include <nan.h>
+#include "integral_types.h"
+
 
 namespace nascent {
 
@@ -22,6 +24,8 @@ class Geohash : public Nan::ObjectWrap {
         static void GetHash(const Nan::FunctionCallbackInfo<v8::Value>& info);
         static void GetHashKey(const Nan::FunctionCallbackInfo<v8::Value>& info);
         static void GetHashRanges(const Nan::FunctionCallbackInfo<v8::Value>& info);
+
+        uint64 GetHashKey(const uint64 hash);
 
 };  // class Geohash
 

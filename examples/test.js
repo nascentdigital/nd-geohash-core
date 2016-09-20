@@ -9,3 +9,8 @@ console.log('hash:    %s', hash);
 console.log('hashKey: %s', hashKey);
 
 const hashRanges = geohash.getHashRanges(43.75565128202533, -79.79070942346192, 43.77424693425796, -79.7563771480713);
+
+console.log('hashRanges:');
+_.forEach(hashRanges, (hashRange) => {
+    console.log('   [%s, %s, %s]', hashRange.hashKey, hashRange.min, hashRange.max);
+});
