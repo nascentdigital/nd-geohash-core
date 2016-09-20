@@ -169,44 +169,36 @@ void Geohash::GetHashKey(const Nan::FunctionCallbackInfo<Value>& info) {
 void Geohash::GetHashRanges(const Nan::FunctionCallbackInfo<Value>& info) {
 
     // fail if arguments are missing
-    if (info.Length() != 1) {
+    if (info.Length() != 4) {
         Nan::ThrowTypeError("Invalid number of arguments.");
         return;
     }
 
     // fail if geohash isn't a string
-    if (!info[0]->IsObject()) {
-        Nan::ThrowTypeError("Geohash bounds must be an Object.");
+    if (!info[0]->IsNumber()
+        || !info[1]->IsNumber()
+        || !info[2]->IsNumber()
+        || !info[3]->IsNumber()) {
+        Nan::ThrowTypeError("Expected numeric positional coordinates (south, west, north, east).");
         return;
     }
-
-    // get object and required properties
-    Local<Object> bounds = info[0]->ToObject();
-    Local<Object> boundsMin = Nan::Get(bounds, Nan::New("min").ToLocalChecked())
-        .ToLocalChecked()->ToObject();
-    Local<Object> boundsMax = Nan::Get(bounds, Nan::New("max").ToLocalChecked())
-        .ToLocalChecked()->ToObject();
 
     // create bounds rect
     S2LatLngRect boundsRect(
         S2LatLng::FromDegrees(
-            Nan::Get(boundsMin, Nan::New("lat").ToLocalChecked())
-                    .ToLocalChecked()->NumberValue(),
-            Nan::Get(boundsMin, Nan::New("lng").ToLocalChecked())
-                    .ToLocalChecked()->NumberValue()),
+            info[0]->NumberValue(),
+            info[1]->NumberValue()),
         S2LatLng::FromDegrees(
-            Nan::Get(boundsMax, Nan::New("lat").ToLocalChecked())
-                    .ToLocalChecked()->NumberValue(),
-            Nan::Get(boundsMax, Nan::New("lng").ToLocalChecked())
-                    .ToLocalChecked()->NumberValue()));
-    std::cout << "[GetGeohashRanges] calculating: " << boundsRect << std::endl;
+            info[2]->NumberValue(),
+            info[3]->NumberValue()));
+    std::cout << "[GetHashRanges] calculating: " << boundsRect << std::endl;
 
     // intersect largest cells across worldspace with bounds and collect hits
     std::stack<S2CellId> parentCells;
     const S2CellId parentEnd = S2CellId::End(0);
     for(S2CellId c = S2CellId::Begin(0); c != parentEnd; c = c.next()) {
         if (boundsRect.Intersects(S2Cell(c))) {
-            std::cout << "[GetGeohashRanges] parent: " << c.id() << std::endl;
+            std::cout << "[GetHashRanges] parent: " << c.id() << std::endl;
             parentCells.push(c);
         }
     }
@@ -244,7 +236,7 @@ void Geohash::GetHashRanges(const Nan::FunctionCallbackInfo<Value>& info) {
                     // add the cell to range if it's a leaf
                     S2CellId &childCell = *i;
                     if (childCell.is_leaf()) {
-                        std::cout << "[GetGeohashRanges] adding child leaf node: " << childCell.id() << std::endl;
+                        std::cout << "[GetHashRanges] adding child leaf node: " << childCell.id() << std::endl;
                         rangeCells.push_back(childCell);
                     }
 
@@ -259,14 +251,14 @@ void Geohash::GetHashRanges(const Nan::FunctionCallbackInfo<Value>& info) {
             case 3:
                 for (std::vector<S2CellId>::iterator i = childCells.begin(); i != childCells.end(); ++i) {
                     S2CellId &childCell = *i;
-                    std::cout << "[GetGeohashRanges] adding child node: " << childCell.id() << std::endl;
+                    std::cout << "[GetHashRanges] adding child node: " << childCell.id() << std::endl;
                     rangeCells.push_back(childCell);
                 }
                 break;
 
             // add parent to range if all children match
             case 4:
-                std::cout << "[GetGeohashRanges] adding parent node: " << parentCell.id() << std::endl;
+                std::cout << "[GetHashRanges] adding parent node: " << parentCell.id() << std::endl;
                 rangeCells.push_back(parentCell);
                 break;
 
@@ -284,7 +276,7 @@ void Geohash::GetHashRanges(const Nan::FunctionCallbackInfo<Value>& info) {
     // iterate over all children in union
     for (int i = 0; i < cellUnion.num_cells(); ++i) {
         const S2CellId &childCell = cellUnion.cell_id(i);
-        std::cout << "[GetGeohashRanges] creating range for child: " << childCell.id() << std::endl;
+        std::cout << "[GetHashRanges] creating range for child: " << childCell.id() << std::endl;
     }
 
     info.GetReturnValue().Set(Nan::New(true));

@@ -21,10 +21,9 @@ function hash(lat, lng, name) {
     const hashKey = ndGeohash.generateHashKey(geohash, precision);
     console.log('[%s] %s', name, hashKey);
 }
-function getRanges(bounds, name) {
-    console.log('geoquery: %s', JSON.stringify(bounds, null, 4));
-
-	var ranges = ndGeohash.getGeohashRanges(bounds);
+function getRanges(name, south, west, north, east) {
+    console.log('geoquery: %d, %d, %d, %d', south, west, north, east);
+	var ranges = ndGeohash.getGeohashRanges(south, west, north, east);
 
     // vector<S2CellId> parentCells;
     // vector<S2CellId> childCells;
@@ -66,14 +65,7 @@ hash(43.720801,-79.642206, 'Malton');
 hash(43.647932,-79.389177, 'Nascent');
 hash(43.643336,-79.380895, 'TELUS');
 
-getRanges({
-  min: { lat: 43.75565128202533, lng: -79.79070942346192 },
-  max: { lat: 43.77424693425796, lng: -79.7563771480713 }
-}, "brampton");
-
-getRanges({
-  min: { lat: 43.50703245678626, lng: -79.94717876855469 },
-  max: { lat: 44.10169354914478, lng: -78.84854595605469 }
-}, "gta");
+getRanges('brampton', 43.75565128202533, -79.79070942346192, 43.77424693425796, -79.7563771480713);
+getRanges('gta', 43.50703245678626, -79.94717876855469, 44.10169354914478, -78.84854595605469);
 
 

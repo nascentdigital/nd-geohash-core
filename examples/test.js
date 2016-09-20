@@ -8,7 +8,4 @@ const hashKey = geohash.getHashKey(hash);
 console.log('hash:    %s', hash);
 console.log('hashKey: %s', hashKey);
 
-geohash.getHashRanges({
-    min: { lat: 43.75565128202533, lng: -79.79070942346192 },
-    max: { lat: 43.77424693425796, lng: -79.7563771480713 }
-});
+const hashRanges = geohash.getHashRanges(43.75565128202533, -79.79070942346192, 43.77424693425796, -79.7563771480713);
