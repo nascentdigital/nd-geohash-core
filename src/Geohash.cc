@@ -86,11 +86,11 @@ void Geohash::New(const Nan::FunctionCallbackInfo<Value>& info) {
         Local<Object> options = info[0]->ToObject();
 
         // get hashkey length, if specified / valid
-        Nan::MaybeLocal<Value> keyLengthOption = Nan::Get(options, Nan::New("keyLength").ToLocalChecked());
-        if (!keyLengthOption.IsEmpty()) {
-            Local<Value> keyLength = keyLengthOption.ToLocalChecked();
-            if (keyLength->IsNumber()) {
-                instance->hashKeyLength_ = keyLength->IntegerValue();
+        Nan::MaybeLocal<Value> hashKeyLengthOption = Nan::Get(options, Nan::New("hashKeyLength").ToLocalChecked());
+        if (!hashKeyLengthOption.IsEmpty()) {
+            Local<Value> hashKeyLength = hashKeyLengthOption.ToLocalChecked();
+            if (hashKeyLength->IsNumber()) {
+                instance->hashKeyLength_ = hashKeyLength->IntegerValue();
             }
         }
     }

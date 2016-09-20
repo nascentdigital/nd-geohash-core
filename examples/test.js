@@ -2,7 +2,7 @@ const
     _ = require('lodash'),
     Geohash = require('bindings')('_nd-geohash-core.node');
 
-const geohash = new Geohash({ keyLength: 13 });
+const geohash = new Geohash({ hashKeyLength: 13 });
 const hash = geohash.getHash(43.760782,-79.765609);
 const hashKey = geohash.getHashKey(hash);
 console.log('hash:    %s', hash);
