@@ -6,7 +6,7 @@
   "private": false,
   "gypfile": true,
   "scripts": {
-    "install": "node-pre-gyp install --fallback-to-build",
+    "install": "node-pre-gyp reinstall --fallback-to-build",
     "test": "jshint index.js && tap --tap test/*.js"
   },
   "dependencies": {
