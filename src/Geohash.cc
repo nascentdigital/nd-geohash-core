@@ -1,6 +1,5 @@
 #include "Geohash.h"
 #include "GeohashRange.h"
-#include <iostream>
 #include <string.h>
 #include <vector>
 #include <stack>
@@ -185,7 +184,6 @@ void Geohash::GetHashRanges(const Nan::FunctionCallbackInfo<Value>& info) {
         S2LatLng::FromDegrees(
             info[2]->NumberValue(),
             info[3]->NumberValue()));
-    std::cout << "[GetHashRanges] calculating: " << boundsRect << std::endl;
 
     // intersect largest cells across worldspace with bounds and collect hits
     std::stack<S2CellId> parentCells;
