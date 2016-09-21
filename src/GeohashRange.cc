@@ -8,10 +8,6 @@ using nascent::GeohashRange;
 const uint64 MERGE_THRESHOLD = 2;
 
 
-GeohashRange::GeohashRange(const S2CellId &cellId)
-    : rangeMin_(cellId.range_min().id()), rangeMax_(cellId.range_max().id()) {
-}
-
 GeohashRange::~GeohashRange() {
 }
 

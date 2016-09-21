@@ -10,9 +10,28 @@ namespace nascent {
 class GeohashRange {
 
     public:
-        explicit GeohashRange(uint64 rangeMin, uint64 rangeMax)
-            : rangeMin_(rangeMin), rangeMax_(rangeMax) {}
-        explicit GeohashRange(const S2CellId &cellId);
+        explicit GeohashRange(uint64 rangeMin, uint64 rangeMax) {
+            if (rangeMin <= rangeMax) {
+                rangeMin_ = rangeMin;
+                rangeMax_ = rangeMax;
+            }
+            else {
+                rangeMin_ = rangeMax;
+                rangeMax_ = rangeMin;
+            }
+        }
+        explicit GeohashRange(const S2CellId &cellId) {
+            uint64 rangeMin = cellId.range_min().id();
+            uint64 rangeMax = cellId.range_max().id();
+            if (rangeMin <= rangeMax) {
+                rangeMin_ = rangeMin;
+                rangeMax_ = rangeMax;
+            }
+            else {
+                rangeMin_ = rangeMax;
+                rangeMax_ = rangeMin;
+            }
+        }
         ~GeohashRange();
 
         uint64 min() { return rangeMin_; }

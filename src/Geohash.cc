@@ -292,7 +292,7 @@ void Geohash::GetHashRanges(const Nan::FunctionCallbackInfo<Value>& info) {
         }
     }
 
-    // massage outer ranges into more granular ranges
+    // massage outer ranges into more granular ranges, for unique hash keys
     Geohash* instance = ObjectWrap::Unwrap<Geohash>(info.This());
     std::vector<GeohashRange> ranges;
     for (std::vector<GeohashRange>::iterator i = outerRanges.begin(); i != outerRanges.end(); ++i) {
@@ -303,7 +303,7 @@ void Geohash::GetHashRanges(const Nan::FunctionCallbackInfo<Value>& info) {
         // simply add item if hashed range is narrow
         uint64 rangeMin = outerRange.min();
         uint64 minHashKey = instance->GetHashKey(rangeMin);
-        uint64 rangeMax = outerRange.min();
+        uint64 rangeMax = outerRange.max();
         uint64 maxHashKey = instance->GetHashKey(rangeMax);
         if (minHashKey == maxHashKey) {
             ranges.push_back(outerRange);
