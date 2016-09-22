@@ -8,8 +8,11 @@ const hashKey = geohash.getHashKey(hash);
 console.log('hash:    %s', hash);
 console.log('hashKey: %s', hashKey);
 
+const hashKeyHints = new Set();
+hashKeyHints.add(hashKey);
+
 const hashRanges = geohash.getHashRanges(43.700620654952886, -79.8008670390625,
-    43.719233402578766, -79.76653476367187);
+    43.719233402578766, -79.76653476367187, hashKeyHints);
 
 console.log('hashRanges:');
 _.forEach(hashRanges, (hashRange) => {

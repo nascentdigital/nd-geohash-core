@@ -1,8 +1,9 @@
 #include "Geohash.h"
 #include "GeohashRange.h"
-#include <string.h>
+#include <string>
 #include <vector>
 #include <stack>
+#include <utility>
 #include <cmath>
 #include "s2.h"
 #include "s2latlng.h"
@@ -148,11 +149,11 @@ void Geohash::GetHashKey(const Nan::FunctionCallbackInfo<Value>& info) {
 
     // resolve hash string
     Nan::Utf8String geohash(info[0]->ToString());
-    const uint64 hash = std::stoull(std::string(*geohash));
+    const uint64_t hash = std::stoull(std::string(*geohash));
 
     // invoke instance method
     Geohash* instance = ObjectWrap::Unwrap<Geohash>(info.This());
-    const uint64 hashKey = instance->GetHashKey(hash);
+    const uint64_t hashKey = instance->GetHashKey(hash);
 
     // return hash key
     Local<String> result = Nan::New(std::to_string(hashKey)).ToLocalChecked();
@@ -162,7 +163,7 @@ void Geohash::GetHashKey(const Nan::FunctionCallbackInfo<Value>& info) {
 void Geohash::GetHashRanges(const Nan::FunctionCallbackInfo<Value>& info) {
 
     // fail if arguments are missing
-    if (info.Length() != 4) {
+    if (info.Length() != 5) {
         Nan::ThrowTypeError("Invalid number of arguments.");
         return;
     }
@@ -172,7 +173,23 @@ void Geohash::GetHashRanges(const Nan::FunctionCallbackInfo<Value>& info) {
         || !info[1]->IsNumber()
         || !info[2]->IsNumber()
         || !info[3]->IsNumber()) {
-        Nan::ThrowTypeError("Expected numeric positional coordinates (south, west, north, east).");
+        Nan::ThrowTypeError("Expected bounds to be numeric positional coordinates (south, west, north, east).");
+        return;
+    }
+
+    // capture hash key hints if specified (for performance)
+    Set *hashKeyHints = NULL;
+    if (info[4]->IsSet()) {
+        hashKeyHints = Set::Cast(*info[4]);
+    }
+
+    // or execute without hints
+    else if (info[4]->IsNull() || info[4]->IsUndefined()) {
+    }
+
+    // or throw if arugment is unrecognized
+    else {
+        Nan::ThrowTypeError("Hash key hints must be a Set if specified.");
         return;
     }
 
@@ -293,39 +310,53 @@ void Geohash::GetHashRanges(const Nan::FunctionCallbackInfo<Value>& info) {
     }
 
     // massage outer ranges into more granular ranges, for unique hash keys
-    Geohash* instance = ObjectWrap::Unwrap<Geohash>(info.This());
-    std::vector<GeohashRange> ranges;
+    const Geohash* instance = ObjectWrap::Unwrap<Geohash>(info.This());
+    const Local<Context> context = Nan::GetCurrentContext();
+    std::vector<std::pair<Local<String>, GeohashRange>> ranges;
     for (std::vector<GeohashRange>::iterator i = outerRanges.begin(); i != outerRanges.end(); ++i) {
 
         // capture next outer range and min/max hash keys
         GeohashRange &outerRange = *i;
 
         // simply add item if hashed range is narrow
-        uint64 rangeMin = outerRange.min();
-        uint64 minHashKey = instance->GetHashKey(rangeMin);
-        uint64 rangeMax = outerRange.max();
-        uint64 maxHashKey = instance->GetHashKey(rangeMax);
+        uint64_t rangeMin = outerRange.min();
+        uint64_t minHashKey = instance->GetHashKey(rangeMin);
+        uint64_t rangeMax = outerRange.max();
+        uint64_t maxHashKey = instance->GetHashKey(rangeMax);
         if (minHashKey == maxHashKey) {
-            ranges.push_back(outerRange);
+
+            // add range if it satisfies the hints (if any)
+            Local<String> rangeHashKey = Nan::New(std::to_string(minHashKey)).ToLocalChecked();
+            if (!hashKeyHints ||
+                hashKeyHints->Has(context, rangeHashKey).FromJust()) {
+
+                ranges.push_back(std::pair<Local<String>, GeohashRange>(rangeHashKey, outerRange));
+            }
         }
 
         // or create ranges for hashed values
         else {
 
             // calculate range denominator
-            uint64 denominator = pow(10, std::to_string(rangeMin).length()
+            uint64_t denominator = pow(10, std::to_string(rangeMin).length()
                 - std::to_string(minHashKey).length());
 
-            for (uint64 hashKey = minHashKey; hashKey <= maxHashKey; ++hashKey) {
-                if (hashKey > 0) {
-                    ranges.push_back(GeohashRange(
-                        hashKey == minHashKey ? rangeMin : hashKey * denominator,
-                        hashKey == maxHashKey ? rangeMax : (hashKey + 1) * denominator - 1));
-                }
-                else {
-                    ranges.push_back(GeohashRange(
-                        hashKey == minHashKey ? rangeMin : (hashKey - 1) * denominator + 1,
-                        hashKey == maxHashKey ? rangeMax : hashKey * denominator));
+            for (uint64_t hashKey = minHashKey; hashKey <= maxHashKey; ++hashKey) {
+
+                // create range
+                GeohashRange range = hashKey > 0
+                    ? GeohashRange(hashKey == minHashKey ? rangeMin : hashKey * denominator,
+                        hashKey == maxHashKey ? rangeMax : (hashKey + 1) * denominator - 1)
+                    : GeohashRange(hashKey == minHashKey ? rangeMin : (hashKey - 1) * denominator + 1,
+                        hashKey == maxHashKey ? rangeMax : hashKey * denominator);
+
+                // add range if it's satisfies the hints (if any)
+                Local<String> rangeHashKey = Nan::New(std::to_string(instance->GetHashKey(range.min())))
+                    .ToLocalChecked();
+                if (!hashKeyHints ||
+                    hashKeyHints->Has(context, rangeHashKey).FromJust()) {
+
+                    ranges.push_back(std::pair<Local<String>, GeohashRange>(rangeHashKey, range));
                 }
             }
         }
@@ -334,19 +365,18 @@ void Geohash::GetHashRanges(const Nan::FunctionCallbackInfo<Value>& info) {
     // return ranges as an array of objects
     Local<Array> rangesArray = Nan::New<Array>(ranges.size());
     int rangeIndex = 0;
-    for (std::vector<GeohashRange>::iterator i = ranges.begin(); i != ranges.end(); ++i) {
+    for (std::vector<std::pair<Local<String>, GeohashRange>>::iterator i = ranges.begin(); i != ranges.end(); ++i) {
 
         // get range
-        GeohashRange &range = *i;
+        std::pair<Local<String>, GeohashRange> &entry = *i;
 
         // create object for range
         Local<Object> rangeObject = Nan::New<Object>();
-        rangeObject->Set(Nan::New("hashKey").ToLocalChecked(),
-            Nan::New(std::to_string(instance->GetHashKey(range.min()))).ToLocalChecked());
+        rangeObject->Set(Nan::New("hashKey").ToLocalChecked(), entry.first);
         rangeObject->Set(Nan::New("min").ToLocalChecked(),
-            Nan::New(std::to_string(range.min())).ToLocalChecked());
+            Nan::New(std::to_string(entry.second.min())).ToLocalChecked());
         rangeObject->Set(Nan::New("max").ToLocalChecked(),
-            Nan::New(std::to_string(range.max())).ToLocalChecked());
+            Nan::New(std::to_string(entry.second.max())).ToLocalChecked());
 
         // add object to array
         rangesArray->Set(rangeIndex++, rangeObject);
@@ -356,7 +386,7 @@ void Geohash::GetHashRanges(const Nan::FunctionCallbackInfo<Value>& info) {
     info.GetReturnValue().Set(rangesArray);
 }
 
-uint64 Geohash::GetHashKey(const uint64 hash) {
+uint64_t Geohash::GetHashKey(const uint64_t hash) const {
 
     // resolve key length (need to mutate it later)
     int hashKeyLength = hashKeyLength_;
@@ -367,8 +397,8 @@ uint64 Geohash::GetHashKey(const uint64 hash) {
     }
 
     // calculate hash key
-    uint64 denominator = pow(10, std::to_string(hash).length() - hashKeyLength);
-    uint64 hashKey = hash / denominator;
+    uint64_t denominator = pow(10, std::to_string(hash).length() - hashKeyLength);
+    uint64_t hashKey = hash / denominator;
 
     // return hash key
     return hashKey;

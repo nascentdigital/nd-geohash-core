@@ -5,7 +5,7 @@
 using nascent::GeohashRange;
 
 
-const uint64 MERGE_THRESHOLD = 2;
+const uint64_t MERGE_THRESHOLD = 2;
 
 
 GeohashRange::~GeohashRange() {
