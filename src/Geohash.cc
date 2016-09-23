@@ -33,6 +33,7 @@ void Geohash::Init() {
     Nan::SetPrototypeMethod(constructorTemplate, "getHash", GetHash);
     Nan::SetPrototypeMethod(constructorTemplate, "getHashKey", GetHashKey);
     Nan::SetPrototypeMethod(constructorTemplate, "getHashRanges", GetHashRanges);
+    Nan::SetPrototypeMethod(constructorTemplate, "filterItems", FilterItems);
 
     // sync constructor with template
     constructorTemplate_.Reset(constructorTemplate->GetFunction());
@@ -178,9 +179,9 @@ void Geohash::GetHashRanges(const Nan::FunctionCallbackInfo<Value>& info) {
     }
 
     // capture hash key hints if specified (for performance)
-    Set *hashKeyHints = NULL;
+    Local<Set> hashKeyHints;
     if (info[4]->IsSet()) {
-        hashKeyHints = Set::Cast(*info[4]);
+        hashKeyHints = Local<Set>::Cast(info[4]);
     }
 
     // or execute without hints
@@ -192,6 +193,7 @@ void Geohash::GetHashRanges(const Nan::FunctionCallbackInfo<Value>& info) {
         Nan::ThrowTypeError("Hash key hints must be a Set if specified.");
         return;
     }
+    std::cout << "hashKeyHints.IsEmpty() = "  << hashKeyHints.IsEmpty() << std::endl;
 
     // create bounds rect
     S2LatLngRect boundsRect(
@@ -325,8 +327,8 @@ void Geohash::GetHashRanges(const Nan::FunctionCallbackInfo<Value>& info) {
 
             // add range if it satisfies the hints (if any)
             Local<String> rangeHashKey = Nan::New(std::to_string(minHashKey)).ToLocalChecked();
-            if (!hashKeyHints ||
-                hashKeyHints->Has(context, rangeHashKey).FromJust()) {
+            if (hashKeyHints.IsEmpty()
+                || hashKeyHints->Has(context, rangeHashKey).FromJust()) {
 
                 hashRanges.push_back(std::pair<Local<String>, GeohashRange>(rangeHashKey, boundaryRange));
             }
@@ -352,8 +354,8 @@ void Geohash::GetHashRanges(const Nan::FunctionCallbackInfo<Value>& info) {
                 // add range if it satisfies the hints (if any)
                 Local<String> rangeHashKey = Nan::New(std::to_string(instance->GetHashKey(range.min())))
                     .ToLocalChecked();
-                if (!hashKeyHints ||
-                    hashKeyHints->Has(context, rangeHashKey).FromJust()) {
+                if (hashKeyHints.IsEmpty()
+                    || hashKeyHints->Has(context, rangeHashKey).FromJust()) {
 
                     hashRanges.push_back(std::pair<Local<String>, GeohashRange>(rangeHashKey, range));
                 }
@@ -362,12 +364,12 @@ void Geohash::GetHashRanges(const Nan::FunctionCallbackInfo<Value>& info) {
     }
 
     // return ranges as an array of objects
-    Local<Array> rangesArray = Nan::New<Array>(hashRanges.size());
-    int rangeIndex = 0;
-    for (std::vector<std::pair<Local<String>, GeohashRange>>::iterator i = hashRanges.begin(); i != hashRanges.end(); ++i) {
+    const int hashRangeCount = hashRanges.size();
+    Local<Array> rangesArray = Nan::New<Array>(hashRangeCount);
+    for (int i = 0; i < hashRangeCount; ++i) {
 
         // get range entry
-        std::pair<Local<String>, GeohashRange> &entry = *i;
+        const std::pair<Local<String>, GeohashRange> &entry = hashRanges.at(i);
 
         // create JavaScript object for range
         Local<Object> rangeObject = Nan::New<Object>();
@@ -378,11 +380,84 @@ void Geohash::GetHashRanges(const Nan::FunctionCallbackInfo<Value>& info) {
             Nan::New(std::to_string(entry.second.max())).ToLocalChecked());
 
         // add object to array
-        rangesArray->Set(rangeIndex++, rangeObject);
+        rangesArray->Set(i, rangeObject);
     }
 
     // return results
     info.GetReturnValue().Set(rangesArray);
+}
+
+void Geohash::FilterItems(const Nan::FunctionCallbackInfo<v8::Value>& info) {
+
+    // fail if arguments are missing
+    if (info.Length() != 6) {
+        Nan::ThrowTypeError("Invalid number of arguments.");
+        return;
+    }
+
+    // validate parameters
+    if (!info[0]->IsArray()) {
+        Nan::ThrowTypeError("Expected items to be an Array.");
+        return;
+    }
+    if (!info[1]->IsString()) {
+        Nan::ThrowTypeError("Expected location key to be specified.");
+        return;
+    }
+    if (!info[2]->IsNumber()
+        || !info[3]->IsNumber()
+        || !info[4]->IsNumber()
+        || !info[5]->IsNumber()) {
+        Nan::ThrowTypeError("Expected bounds to be numeric positional coordinates (south, west, north, east).");
+        return;
+    }
+
+    // end immediately if array is empty
+    Local<Array> itemsArray = Local<Array>::Cast(info[0]);
+    const uint32_t itemCount = itemsArray->Length();
+    if (itemCount == 0) {
+        info.GetReturnValue().Set(itemsArray);
+        return;
+    }
+
+    // create bounds rect
+    S2LatLngRect boundsRect(
+        S2LatLng::FromDegrees(
+            info[2]->NumberValue(),
+            info[3]->NumberValue()),
+        S2LatLng::FromDegrees(
+            info[4]->NumberValue(),
+            info[5]->NumberValue()));
+
+    // filter all the items that fit into bounds
+    const Local<String> locationKey = info[1]->ToString();
+    std::vector<Local<Object>> filteredItems;
+    for (uint32_t i = 0; i < itemCount; ++i) {
+
+        // get next item
+        Local<Object> item = Nan::Get(itemsArray, i).ToLocalChecked()->ToObject();
+
+        // get item location (fail if it doesn't exist)
+        Local<Object> location = Nan::Get(item, locationKey).ToLocalChecked()->ToObject();
+        S2LatLng latlng = S2LatLng::FromDegrees(
+            Nan::Get(location, Nan::New("lat").ToLocalChecked()).ToLocalChecked()->NumberValue(),
+            Nan::Get(location, Nan::New("lng").ToLocalChecked()).ToLocalChecked()->NumberValue());
+
+        // add item if it intersects bounds
+        if (boundsRect.Contains(latlng)) {
+            filteredItems.push_back(item);
+        }
+    }
+
+    // create populated array
+    const int filteredItemCount = filteredItems.size();
+    Local<Array> filteredItemsArray = Nan::New<Array>(filteredItemCount);
+    for (int i = 0; i < filteredItemCount; ++i) {
+        filteredItemsArray->Set(i, filteredItems.at(i));
+    }
+
+    // return array
+    info.GetReturnValue().Set(filteredItemsArray);
 }
 
 uint64_t Geohash::GetHashKey(const uint64_t hash) const {

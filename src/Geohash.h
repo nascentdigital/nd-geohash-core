@@ -23,6 +23,7 @@ class Geohash : public Nan::ObjectWrap {
         static void GetHash(const Nan::FunctionCallbackInfo<v8::Value>& info);
         static void GetHashKey(const Nan::FunctionCallbackInfo<v8::Value>& info);
         static void GetHashRanges(const Nan::FunctionCallbackInfo<v8::Value>& info);
+        static void FilterItems(const Nan::FunctionCallbackInfo<v8::Value>& info);
 
         uint64_t GetHashKey(const uint64_t hash) const;
 

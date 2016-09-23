@@ -34,8 +34,8 @@ class GeohashRange {
         }
         ~GeohashRange();
 
-        uint64_t min() { return rangeMin_; }
-        uint64_t max() { return rangeMax_; }
+        uint64_t min() const { return rangeMin_; }
+        uint64_t max() const { return rangeMax_; }
 
         bool tryMerge(const GeohashRange &range);
 
