@@ -193,7 +193,6 @@ void Geohash::GetHashRanges(const Nan::FunctionCallbackInfo<Value>& info) {
         Nan::ThrowTypeError("Hash key hints must be a Set if specified.");
         return;
     }
-    std::cout << "hashKeyHints.IsEmpty() = "  << hashKeyHints.IsEmpty() << std::endl;
 
     // create bounds rect
     S2LatLngRect boundsRect(
