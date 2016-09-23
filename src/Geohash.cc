@@ -204,15 +204,15 @@ void Geohash::GetHashRanges(const Nan::FunctionCallbackInfo<Value>& info) {
 
     // intersect largest cells across worldspace with bounds and collect hits
     std::stack<S2CellId> parentCells;
-    const S2CellId parentEnd = S2CellId::End(0);
-    for(S2CellId c = S2CellId::Begin(0); c != parentEnd; c = c.next()) {
+    const S2CellId lastWorldCell = S2CellId::End(0);
+    for(S2CellId c = S2CellId::Begin(0); c != lastWorldCell; c = c.next()) {
         if (boundsRect.Intersects(S2Cell(c))) {
             parentCells.push(c);
         }
     }
 
     // iterate over all matching parent cells
-    std::vector<S2CellId> rangeCells;
+    std::vector<S2CellId> boundsCells;
     while(!parentCells.empty()) {
 
         // process next cell
@@ -239,15 +239,15 @@ void Geohash::GetHashRanges(const Nan::FunctionCallbackInfo<Value>& info) {
             // evaluate individual children if the set seems to small
             case 1:
             case 2:
-                for (std::vector<S2CellId>::iterator i = childCells.begin(); i != childCells.end(); ++i) {
+                for (std::vector<S2CellId>::iterator ci = childCells.begin(); ci != childCells.end(); ++ci) {
 
-                    // add the cell to range if it's a leaf
-                    S2CellId &childCell = *i;
+                    // add the cell to bounds if it's a leaf
+                    S2CellId &childCell = *ci;
                     if (childCell.is_leaf()) {
-                        rangeCells.push_back(childCell);
+                        boundsCells.push_back(childCell);
                     }
 
-                    // or add to parents for later evaulation
+                    // or add to parents for later evaluation
                     else {
                         parentCells.push(childCell);
                     }
@@ -256,15 +256,14 @@ void Geohash::GetHashRanges(const Nan::FunctionCallbackInfo<Value>& info) {
 
             // add all children to range if there are 3 nodes
             case 3:
-                for (std::vector<S2CellId>::iterator i = childCells.begin(); i != childCells.end(); ++i) {
-                    S2CellId &childCell = *i;
-                    rangeCells.push_back(childCell);
+                for (std::vector<S2CellId>::iterator ci = childCells.begin(); ci != childCells.end(); ++ci) {
+                    boundsCells.push_back(*ci);
                 }
                 break;
 
             // add parent to range if all children match
             case 4:
-                rangeCells.push_back(parentCell);
+                boundsCells.push_back(parentCell);
                 break;
 
             // a matching parent can only have 1-4 children, so this is invalid
@@ -275,29 +274,28 @@ void Geohash::GetHashRanges(const Nan::FunctionCallbackInfo<Value>& info) {
     }
 
     // stop processing if there are no cells to union
-    const int resultsLength = rangeCells.size();
-    if (resultsLength == 0) {
+    if (boundsCells.size() == 0) {
         info.GetReturnValue().Set(Nan::New<Array>(0));
         return;
     }
 
-    // create union of all child cells
+    // create union of all boundary cells (merges and sorts the cells)
     S2CellUnion cellUnion;
-    cellUnion.Init(rangeCells);
+    cellUnion.Init(boundsCells);
 
     // transform cells into a collection of merged ranges
-    std::vector<GeohashRange> outerRanges;
+    std::vector<GeohashRange> boundaryRanges;
     for (int i = 0; i < cellUnion.num_cells(); ++i) {
 
         // get next child cell and transform to range
-        const S2CellId &childCell = cellUnion.cell_id(i);
-        GeohashRange range(childCell);
+        const S2CellId &cell = cellUnion.cell_id(i);
+        GeohashRange range(cell);
 
-        // try to merge range
+        // try to merge boundary into existing ranges
         bool merged = false;
-        for (std::vector<GeohashRange>::iterator i = outerRanges.begin(); i != outerRanges.end(); ++i) {
-            GeohashRange &existingRange = *i;
-            if (existingRange.tryMerge(range)) {
+        for (std::vector<GeohashRange>::iterator ri = boundaryRanges.begin(); ri != boundaryRanges.end(); ++ri) {
+            GeohashRange &boundaryRange = *ri;
+            if (boundaryRange.tryMerge(range)) {
                 merged = true;
                 break;
             }
@@ -305,24 +303,24 @@ void Geohash::GetHashRanges(const Nan::FunctionCallbackInfo<Value>& info) {
 
         // add range to collection if it wasn't merged
         if (!merged) {
-            outerRanges.push_back(range);
+            boundaryRanges.push_back(range);
         }
     }
 
-    // massage outer ranges into more granular ranges, for unique hash keys
+    // massage boundary ranges into more granular ranges split by unique hash keys
     const Geohash* instance = ObjectWrap::Unwrap<Geohash>(info.This());
     const Local<Context> context = Nan::GetCurrentContext();
-    std::vector<std::pair<Local<String>, GeohashRange>> ranges;
-    for (std::vector<GeohashRange>::iterator i = outerRanges.begin(); i != outerRanges.end(); ++i) {
+    std::vector<std::pair<Local<String>, GeohashRange>> hashRanges;
+    for (std::vector<GeohashRange>::iterator ri = boundaryRanges.begin(); ri != boundaryRanges.end(); ++ri) {
 
-        // capture next outer range and min/max hash keys
-        GeohashRange &outerRange = *i;
+        // resolve boundary range and min/max hash keys
+        GeohashRange &boundaryRange = *ri;
+        uint64_t rangeMin = boundaryRange.min();
+        uint64_t minHashKey = instance->GetHashKey(rangeMin);
+        uint64_t rangeMax = boundaryRange.max();
+        uint64_t maxHashKey = instance->GetHashKey(rangeMax);
 
         // simply add item if hashed range is narrow
-        uint64_t rangeMin = outerRange.min();
-        uint64_t minHashKey = instance->GetHashKey(rangeMin);
-        uint64_t rangeMax = outerRange.max();
-        uint64_t maxHashKey = instance->GetHashKey(rangeMax);
         if (minHashKey == maxHashKey) {
 
             // add range if it satisfies the hints (if any)
@@ -330,7 +328,7 @@ void Geohash::GetHashRanges(const Nan::FunctionCallbackInfo<Value>& info) {
             if (!hashKeyHints ||
                 hashKeyHints->Has(context, rangeHashKey).FromJust()) {
 
-                ranges.push_back(std::pair<Local<String>, GeohashRange>(rangeHashKey, outerRange));
+                hashRanges.push_back(std::pair<Local<String>, GeohashRange>(rangeHashKey, boundaryRange));
             }
         }
 
@@ -341,6 +339,7 @@ void Geohash::GetHashRanges(const Nan::FunctionCallbackInfo<Value>& info) {
             uint64_t denominator = pow(10, std::to_string(rangeMin).length()
                 - std::to_string(minHashKey).length());
 
+            // evaluate the whole range spectrum
             for (uint64_t hashKey = minHashKey; hashKey <= maxHashKey; ++hashKey) {
 
                 // create range
@@ -350,27 +349,27 @@ void Geohash::GetHashRanges(const Nan::FunctionCallbackInfo<Value>& info) {
                     : GeohashRange(hashKey == minHashKey ? rangeMin : (hashKey - 1) * denominator + 1,
                         hashKey == maxHashKey ? rangeMax : hashKey * denominator);
 
-                // add range if it's satisfies the hints (if any)
+                // add range if it satisfies the hints (if any)
                 Local<String> rangeHashKey = Nan::New(std::to_string(instance->GetHashKey(range.min())))
                     .ToLocalChecked();
                 if (!hashKeyHints ||
                     hashKeyHints->Has(context, rangeHashKey).FromJust()) {
 
-                    ranges.push_back(std::pair<Local<String>, GeohashRange>(rangeHashKey, range));
+                    hashRanges.push_back(std::pair<Local<String>, GeohashRange>(rangeHashKey, range));
                 }
             }
         }
     }
 
     // return ranges as an array of objects
-    Local<Array> rangesArray = Nan::New<Array>(ranges.size());
+    Local<Array> rangesArray = Nan::New<Array>(hashRanges.size());
     int rangeIndex = 0;
-    for (std::vector<std::pair<Local<String>, GeohashRange>>::iterator i = ranges.begin(); i != ranges.end(); ++i) {
+    for (std::vector<std::pair<Local<String>, GeohashRange>>::iterator i = hashRanges.begin(); i != hashRanges.end(); ++i) {
 
-        // get range
+        // get range entry
         std::pair<Local<String>, GeohashRange> &entry = *i;
 
-        // create object for range
+        // create JavaScript object for range
         Local<Object> rangeObject = Nan::New<Object>();
         rangeObject->Set(Nan::New("hashKey").ToLocalChecked(), entry.first);
         rangeObject->Set(Nan::New("min").ToLocalChecked(),
